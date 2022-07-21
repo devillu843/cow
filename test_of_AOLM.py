@@ -1,4 +1,4 @@
-import cv2
+from grpc import access_token_call_credentials
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,18 +16,18 @@ from torchsummary import summary
 from myutils.read_split_data import read_split_data
 from myutils.Mydataset import MyDataset
 from myutils.write_into_file import pd_toExcel
-from myutils.Mytransform import Gaussian, bright_contrast_color_sharpness, pepper_salt
+from myutils.Mytransform import *
 from myutils.AOLM import AOLM
 
 
-from Backbone.resne import resnet50
+from Backbone.resne import *
 from Backbone.ConfusionMatrix import ConfusionMatrix
 
 # ------------------------------------------
 # 参数调整
 # ------------------------------------------
 batch_size = 8
-epochs = 80
+epochs = 100
 lr = 0.0001
 num_classes = 41
 test = True
@@ -40,11 +40,16 @@ train = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
-model = resnet50(num_classes=num_classes).to(device)
+model = ResNet50_AOLM(num_classes=num_classes).to(device)
 loss_function = nn.CrossEntropyLoss()
 # loss_function = SoftDiceLoss() # 学不到内容
 optimizer = torch.optim.Adam(model.parameters(), lr)
 
+# stepLR
+# scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.1)
+# 指数衰减
+# scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9)
+# 余弦退火
 # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=20, eta_min=0.001)
 
 
@@ -112,7 +117,8 @@ nowt = time.strftime("%Y-%m-%d-%H_%M_%S", now)
 
 
 data_transform = {
-    'train': transforms.Compose([transforms.Resize((224, 224)),
+    'train': transforms.Compose([padding_img(),
+                                transforms.Resize((480, 480)),
                                 transforms.RandomHorizontalFlip(),  # 以给定的概率随机水平翻转
                                 Gaussian(0.5,0.1,0.2),
                                 bright_contrast_color_sharpness(p=0.5,bright=0.5),
@@ -123,12 +129,14 @@ data_transform = {
                                 transforms.RandomErasing(0.3,(0.2,1),(0.2,3.3),value=0),
                                 # transforms.ColorJitter(brightness=0, contrast=0, saturation=0, hue=0),
                                 ]),
-    'val': transforms.Compose([transforms.Resize((224, 224)),
-                              transforms.ToTensor(),
-                              transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
+    'val': transforms.Compose([ padding_img(),
+                                transforms.Resize((480, 480)),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                                   0.229, 0.224, 0.225])
                                ]),
-    'test': transforms.Compose([transforms.Resize((224, 224)),
+    'test': transforms.Compose([padding_img(),
+                                transforms.Resize((480, 480)),
                                 transforms.ToTensor(),
                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                                     0.229, 0.224, 0.225])
@@ -185,44 +193,45 @@ test_loader = torch.utils.data.DataLoader(test_data_set,
                                           collate_fn=test_data_set.collate_fn)
 
 # 模型大小
-# summary(model, input_size=(3, 224, 224))
+# summary(model, input_size=(3, 480, 480))
+# input = torch.randn(1, 3, 480, 480).to(device)
+# flops, params = profile(model,inputs=(input,))
+# print('flops:',flops)
+# print('params:',params)
+
 
 # print(save_path)
 if train:
     best_acc = 0.0
     for epoch in range(epochs):
         model.train()  # 训练时dropout有效
+        # model.load_state_dict(torch.load(save_path))
         loss = 0.0
         loop_train = tqdm(enumerate(train_loader), total=len(train_loader))
         for _, (images, labels) in loop_train:
-            # num=0
-            # for i in images:
-            #     num += 1
-            #     newName = "./"+str(num)+".png"
-            #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
-            #     j = j * 255
-            #     j = j[:,:,[2,1,0]]
-            #     cv2.imwrite(newName,j)
-            
             optimizer.zero_grad()
-            outputs = model(images.to(device))
+            outputs, output1 = model(images.to(device))
             loss_each_step = loss_function(outputs, labels.to(device))
-            loss_each_step.backward()
+            loss1 = loss_function(output1,labels.to(device))
+            # loss1.backward()
+            # loss_each_step.backward()
+            loss_sum = loss1+loss_each_step
+            loss_sum.backward()
             optimizer.step()
             # scheduler.step()
 
-            loss += loss_each_step.item()
+            loss += loss_each_step.item()+loss1.item()
             loop_train.set_description(f'Train Epoch [{epoch+1}/{epochs}]')
             loop_train.set_postfix(loss=loss)
         # 写入loss,loss值，每一个epoch记录一次
         # writer.add_scalar('Train_loss', loss, epoch)
 
-        model.eval()
+        model.eval() 
         acc = 0.0
         with torch.no_grad():
             loop_val = tqdm(enumerate(val_loader), total=len(val_loader))
             for _, (val_images, val_labels) in loop_val:
-                outputs = model(val_images.to(device))
+                outputs,_ = model(val_images.to(device))
                 predict = torch.max(outputs, dim=1)[1]
                 acc += (predict == val_labels.to(device)).sum().item()
                 loop_val.set_description(f'Val Epoch [{epoch+1}/{epochs}]')
@@ -230,8 +239,10 @@ if train:
             acc_test = acc / val_num
             if acc_test >= best_acc:
                 best_acc = acc_test
-                torch.save(model.state_dict(), save_path)
-                print('save the model:%.4f' % best_acc)
+                print(acc_test)
+                if acc_test>=0.9:
+                    torch.save(model.state_dict(), save_path)
+                    print('save the model:%.4f' % best_acc)
 
             # 写入loss,loss值，每一个epoch记录一次
             # writer.add_scalar('Val_acc', best_acc, epoch)
@@ -241,7 +252,6 @@ if train:
 
 
 if test:
-    # num = 0
     json_file = open(json_class, 'r')
     class_indict = json.load(json_file)
     labels = [label for _, label in class_indict.items()]
@@ -271,15 +281,7 @@ if test:
         batch_num = 1
 
         for _, (test_images, test_labels) in loop_test:
-            # num=0
-            # for i in test_images:
-            #     num += 1
-            #     newName = "./"+str(num)+".png"
-            #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
-            #     j = j * 255
-            #     j = j[:,:,[2,1,0]]
-            #     cv2.imwrite(newName,j)
-            outputs = model(test_images.to(device))  # 指认设备
+            outputs,_ = model(test_images.to(device))  # 指认设备
             predict_y = torch.max(outputs, dim=1)[1]
 
             # -----------------------------------------------

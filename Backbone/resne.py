@@ -1,3 +1,4 @@
+from turtle import forward
 import cv2
 import torch.nn.functional as F
 import torch.nn as nn
@@ -82,6 +83,130 @@ class Bottleneck(nn.Module):
         return out
 
 
+# class ResNet(nn.Module):
+
+#     def __init__(self, block, blocks_num, num_classes=1000, include_top=True):
+#         super(ResNet, self).__init__()
+#         self.include_top = include_top
+#         self.in_channel = 64
+
+#         self.conv1 = nn.Conv2d(3, self.in_channel, kernel_size=7, stride=2,
+#                                padding=3, bias=False)
+#         self.bn1 = nn.BatchNorm2d(self.in_channel)
+#         self.relu = nn.ReLU(inplace=True)
+#         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+#         self.layer1 = self._make_layer(block, 64, blocks_num[0])
+#         self.layer2 = self._make_layer(block, 128, blocks_num[1], stride=2)
+#         self.layer3 = self._make_layer(block, 256, blocks_num[2], stride=2)
+#         self.layer4 = self._make_layer(block, 512, blocks_num[3], stride=2)
+#         if self.include_top:
+#             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))  # output size = (1, 1)
+#             self.fc = nn.Linear(512 * block.expansion, num_classes)
+        
+#         self.conv1_2 = nn.Conv2d(3, self.in_channel, kernel_size=7, stride=2,
+#                                padding=3, bias=False)
+#         self.bn1_2 = nn.BatchNorm2d(self.in_channel)
+#         self.relu_2 = nn.ReLU(inplace=True)
+#         self.maxpool_2 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+#         self.layer1_2 = self._make_layer(block, 64, blocks_num[0])
+#         self.layer2_2 = self._make_layer(block, 128, blocks_num[1], stride=2)
+#         self.layer3_2 = self._make_layer(block, 256, blocks_num[2], stride=2)
+#         self.layer4_2 = self._make_layer(block, 512, blocks_num[3], stride=2)
+
+#         for m in self.modules():
+#             if isinstance(m, nn.Conv2d):
+#                 nn.init.kaiming_normal_(
+#                     m.weight, mode='fan_out', nonlinearity='relu')
+
+#     def _make_layer(self, block, channel, block_num, stride=1):  # channel第一层channel个数
+#         downsample = None
+#         if stride != 1 or self.in_channel != channel * block.expansion:
+#             downsample = nn.Sequential(
+#                 nn.Conv2d(self.in_channel, channel * block.expansion,
+#                           kernel_size=1, stride=stride, bias=False),
+#                 nn.BatchNorm2d(channel * block.expansion))
+
+#         layers = []
+#         layers.append(block(self.in_channel, channel,
+#                       downsample=downsample, stride=stride))
+#         self.in_channel = channel * block.expansion
+
+#         for _ in range(1, block_num):
+#             layers.append(block(self.in_channel, channel))
+
+#         return nn.Sequential(*layers)
+
+#     def forward(self, x):
+
+#         x1 = self.conv1(x)
+#         x1 = self.bn1(x1)
+#         x1 = self.relu(x1)
+#         x1 = self.maxpool(x1)
+
+#         x1 = self.layer1(x1)
+#         x1 = self.layer2(x1)
+#         x1 = self.layer3(x1)
+#         x_layer3 = self.layer4[0:1](x1)
+#         x_layer4 = self.layer4[2](x_layer3)
+
+#         # coordinates = torch.tensor(AOLM(x_layer4.detach(), x_layer3.detach()))
+#         coordinates = torch.tensor(AOLM(x_layer4, x_layer3))
+#         batch_size = len(coordinates)
+#         local_imgs = torch.zeros([batch_size, 3, 480, 480]).to('cuda')  # [N, 3, 448, 448]
+#         for i in range(batch_size):
+#             [x0, y0, x1, y1] = coordinates[i]
+
+#             # interpolate 上下采样函数，调整大小用
+#             local_imgs[i:i + 1] = F.interpolate(x[i:i + 1, :, x0:(x1+1), y0:(y1+1)], size=(480, 480),
+#                                                 mode='bilinear', align_corners=True)  # [N, 3, 224, 224]
+#         # num = 0
+#         # for i in local_imgs:
+#         #     num += 1
+#         #     newName = "./"+str(num)+".jpg"
+#         #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
+#         #     j = j * 255
+#         #     j = j[:,:,[2,1,0]]
+#         #     cv2.imwrite(newName,j)
+#         # num = 0
+#         # for i in x:
+#         #     num += 1
+#         #     newName = "./"+str(num)+".png"
+#         #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
+#         #     j = j * 255
+#         #     j = j[:,:,[2,1,0]]
+#         #     cv2.imwrite(newName,j)
+
+#         # if self.include_top:
+#         #     x1 = self.avgpool(x_layer4)
+#         #     x1 = torch.flatten(x1, 1)
+#             # x1 = self.fc(x1)
+#             # x1 = F.softmax(x1)
+        
+#         x = self.conv1_2(local_imgs)
+#         x = self.bn1_2(x)
+#         x = self.relu_2(x)
+#         x = self.maxpool_2(x)
+
+#         x = self.layer1_2(x)
+#         x = self.layer2_2(x)
+#         x = self.layer3_2(x)
+#         x = self.layer4_2(x)
+
+#         if self.include_top:
+#             x1 = self.avgpool(x_layer4)
+#             x1 = torch.flatten(x1,1)
+#             x1= self.fc(x1)
+#             x = self.avgpool(x)
+#             x = torch.flatten(x, 1)
+#             # x = x + x1
+#             x = self.fc(x)
+#             # x = x * x1
+#             # sub = x - x1
+#             # print(sub if sub == 0 else None)
+
+
+#         return x,x1
+
 class ResNet(nn.Module):
 
     def __init__(self, block, blocks_num, num_classes=1000, include_top=True):
@@ -126,51 +251,7 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-
-        x1 = self.conv1(x)
-        x1 = self.bn1(x1)
-        x1 = self.relu(x1)
-        x1 = self.maxpool(x1)
-
-        x1 = self.layer1(x1)
-        x1 = self.layer2(x1)
-        x1 = self.layer3(x1)
-        x_layer3 = self.layer4[0:1](x1)
-        x_layer4 = self.layer4[2](x_layer3)
-
-        # coordinates = torch.tensor(AOLM(x_layer4.detach(), x_layer3.detach()))
-        coordinates = torch.tensor(AOLM(x_layer4, x_layer3))
-        batch_size = len(coordinates)
-        local_imgs = torch.zeros([batch_size, 3, 224, 224]).to('cuda')  # [N, 3, 448, 448]
-        for i in range(batch_size):
-            [x0, y0, x1, y1] = coordinates[i]
-
-            # interpolate 上下采样函数，调整大小用
-            local_imgs[i:i + 1] = F.interpolate(x[i:i + 1, :, x0:(x1+1), y0:(y1+1)], size=(224, 224),
-                                                mode='bilinear', align_corners=True)  # [N, 3, 224, 224]
-        # num = 0
-        # for i in local_imgs:
-        #     num += 1
-        #     newName = "./"+str(num)+".jpg"
-        #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
-        #     j = j * 255
-        #     j = j[:,:,[2,1,0]]
-        #     cv2.imwrite(newName,j)
-        # num = 0
-        # for i in x:
-        #     num += 1
-        #     newName = "./"+str(num)+".png"
-        #     j = i.cpu().numpy().swapaxes(0,2).swapaxes(0,1)
-        #     j = j * 255
-        #     j = j[:,:,[2,1,0]]
-        #     cv2.imwrite(newName,j)
-
-        if self.include_top:
-            x1 = self.avgpool(x_layer4)
-            x1 = torch.flatten(x1, 1)
-            x1 = self.fc(x1)
-        
-        x = self.conv1(local_imgs)
+        x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
@@ -178,18 +259,14 @@ class ResNet(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)
+        x_last2 = self.layer4[0:1](x)
+        x_last = self.layer4[2](x_last2)
 
         if self.include_top:
-            x = self.avgpool(x)
+            x = self.avgpool(x_last)
             x = torch.flatten(x, 1)
             x = self.fc(x)
-            x = x * x1
-            # sub = x - x1
-            # print(sub if sub == 0 else None)
-
-
-        return x
+        return x_last2, x_last, x
 
 
 def resnet18(num_classes=1000, include_top=True):
@@ -210,6 +287,34 @@ def resnet101(num_classes=1000, include_top=True):
 
 def resnet152(num_classes=1000, include_top=True):
     return ResNet(BasicBlock, [3, 8, 36, 3], num_classes=num_classes, include_top=include_top)
+
+'''
+反正我是对这个模型大小不满意，准备调整下模型大小
+'''
+class ResNet50_AOLM(nn.Module):
+    def __init__(self,block=BasicBlock, blocks_num=[3, 4, 6, 3], num_classes=1000, include_top=True) -> None:
+        super().__init__()
+        # 返回最后两层特征图
+        self.res1 = ResNet(block, blocks_num, num_classes, include_top)
+        # 返回最后的特征图，经过flatten和fc进行输出
+        self.res2 = ResNet(block, blocks_num, num_classes, include_top)
+
+    def forward(self, x):
+        x_last2, x_last, x_linear1 = self.res1(x)
+
+        coordinates = torch.tensor(AOLM(x_last, x_last2))
+        batch_size = len(coordinates)
+        local_imgs = torch.zeros([batch_size, 3, 480, 480]).to('cuda')  # [N, 3, 448, 448]
+        for i in range(batch_size):
+            [x0, y0, x1, y1] = coordinates[i]
+
+            # interpolate 上下采样函数，调整大小用
+            local_imgs[i:i + 1] = F.interpolate(x[i:i + 1, :, x0:(x1+1), y0:(y1+1)], size=(480, 480),
+                                                mode='bilinear', align_corners=True)  # [N, 3, 224, 224]
+        _, _, x_linear2 = self.res2(local_imgs)
+        return x_linear1, x_linear2
+
+
 
 
 #     Sequential(
