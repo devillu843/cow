@@ -83,6 +83,8 @@ class Bottleneck(nn.Module):
         return out
 
 
+
+
 class ResNet(nn.Module):
 
     def __init__(self, block, blocks_num, num_classes=1000, include_top=True):
@@ -187,8 +189,212 @@ class ResNet50_AOLM(nn.Module):
             # interpolate 上下采样函数，调整大小用
             local_imgs[i:i + 1] = F.interpolate(x[i:i + 1, :, x0:(x1+1), y0:(y1+1)], size=(480, 480),
                                                 mode='bilinear', align_corners=True)  # [N, 3, 224, 224]
-        _, _, x_linear2 = self.res2(local_imgs)
-        return x_linear1, x_linear2
+        _, x_last, x_linear2 = self.res2(local_imgs)
+        return x_linear1, x_linear2, x_last
+
+
+
+
+#     Sequential(
+#   (0): Bottleneck(
+#     (conv1): Conv2d(1024, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+#     (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (relu): ReLU(inplace=True)
+#     (downsample): Sequential(
+#       (0): Conv2d(1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False)
+#       (1): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     )
+#   )
+#   (1): Bottleneck(
+#     (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+#     (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (relu): ReLU(inplace=True)
+#   )
+#   (2): Bottleneck(
+#     (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+#     (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+#     (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+#     (relu): ReLU(inplace=True)
+#   )
+# )
+
+
+class ALOM_ResNet_two_part(nn.Module):
+    def __init__(self, block, blocks_num, num_classes, include_top) -> None:
+        super().__init__()
+        self.res1 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(block.expansion * 512 * 2, num_classes)
+
+    def forward(self, x1, x2):
+        x1_linear,_,x1 = self.res1(x1)
+        x1 = self.avgpool(x1)
+        x2_linear,_,x2 = self.res1(x2)
+        x2 = self.avgpool(x2)
+        x = torch.cat([x1,x2], dim=1)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x1_linear, x2_linear, x
+
+def ALOM_resnet18_two(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet34_two(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet50_two(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet101_two(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet152_two(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part(BasicBlock, [3, 8, 36, 3], num_classes=num_classes, include_top=include_top)
+
+
+class ALOM_ResNet_two_part_alone(nn.Module):
+    def __init__(self, block, blocks_num, num_classes, include_top) -> None:
+        super().__init__()
+        self.res1 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.res2 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.avgpool1 = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool2 = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(block.expansion * 512 * 2, num_classes)
+
+    def forward(self, x1, x2):
+        x1_linear,_,x1 = self.res1(x1)
+        x1 = self.avgpool1(x1)
+        x2_linear,_,x2 = self.res2(x2)
+        x2 = self.avgpool1(x2)
+        x = torch.cat([x1,x2], dim=1)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x1_linear, x2_linear, x
+
+
+
+def ALOM_resnet18_two_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part_alone(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet34_two_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part_alone(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet50_two_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part_alone(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet101_two_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part_alone(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet152_two_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_two_part_alone(BasicBlock, [3, 8, 36, 3], num_classes=num_classes, include_top=include_top)
+
+
+class ALOM_ResNet_three_part(nn.Module):
+    def __init__(self, block, blocks_num, num_classes, include_top) -> None:
+        super().__init__()
+        self.res = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(block.expansion * 512 * 3, num_classes)
+
+    def forward(self, x1, x2, x3):
+        x1_linear,_,x1 = self.res(x1)
+        x1 = self.avgpool(x1)
+        x2_linear,_,x2 = self.res(x2)
+        x2 = self.avgpool(x2)
+        x3_linear,_,x3 = self.res(x3)
+        x3 = self.avgpool(x3)
+        x = torch.cat([x1,x2,x3], dim=1)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x1_linear, x2_linear, x3_linear, x
+
+
+def ALOM_resnet18_three(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet34_three(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet50_three(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet101_three(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet152_three(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part(BasicBlock, [3, 8, 36, 3], num_classes=num_classes, include_top=include_top)
+
+
+class ALOM_ResNet_three_part_alone(nn.Module):
+
+    def __init__(self, block, blocks_num, num_classes, include_top) -> None:
+        super().__init__()
+        self.res1 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.res2 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.res3 = ResNet50_AOLM(block, blocks_num, num_classes, include_top)
+        self.avgpool1 = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool2 = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool3 = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(block.expansion * 512 * 3, num_classes)
+
+    def forward(self, x1, x2, x3):
+        x1_linear,_,x1 = self.res1(x1)
+        x1 = self.avgpool1(x1)
+        x2_linear,_,x2 = self.res2(x2)
+        x2 = self.avgpool2(x2)
+        x3_linear,_,x3 = self.res3(x3)
+        x3 = self.avgpool3(x3)
+        x = torch.cat([x1,x2,x3], dim=1)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x1_linear, x2_linear, x3_linear, x
+
+
+def ALOM_resnet18_three_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part_alone(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet34_three_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part_alone(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet50_three_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part_alone(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet101_three_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part_alone(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, include_top=include_top)
+
+
+def ALOM_resnet152_three_alone(num_classes=1000, include_top=True):
+    return ALOM_ResNet_three_part_alone(BasicBlock, [3, 8, 36, 3], num_classes=num_classes, include_top=include_top)
+
+
+
+
 
 if __name__ == '__main__':
 

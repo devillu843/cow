@@ -56,16 +56,16 @@ image_path1 = './dataset/test-41-different/torso'
 image_path2 = './dataset/test-41-different/head'
 image_path3 = './dataset/test-41-different/all'
 # 数据结果存储路径
-write_home = './logs/test-41-different/torso_head_all_fine_grained'
-write_name = '/Alexnet_three_part/'
+write_home = './logs/test-41-different/AOLM_torso_head_all_fine_grained'
+write_name = '/AOLM_resnet50_three_part/'
 write_path = write_home + write_name
 # 权重文件存储路径
-save_home = './weights/test-41-different/torso_head_all_fine_grained'
-save_name = '/Alexnet_three_part.pt'
+save_home = './weights/test-41-different/AOLM_torso_head_all_fine_grained'
+save_name = '/AOLM_resnet50_three_part.pt'
 save_path = save_home + save_name
 # 分类文件
 json_class = 'class-test-41.json'
-excel_name = './excel/Alexnet-41different-torso-head-all.xlsx'
+excel_name = './excel/AOLM_resnet50-41different-torso-head-all.xlsx'
 
 torch.manual_seed(100)
 torch.cuda.manual_seed(100)
@@ -191,8 +191,10 @@ if train:
         loop_train = tqdm(enumerate(train_loader), total=len(train_loader))
         for _, (image1, image2, image3, labels) in loop_train:
             optimizer.zero_grad()
-            outputs = model(image1.to(device), image2.to(device),image3.to(device))
-            loss_each_step = loss_function(outputs, labels.to(device))
+            x1_linear, x2_linear, x3_linear, outputs = model(image1.to(device), image2.to(device),image3.to(device))
+            labels = labels.to(device)
+            loss_each_step = loss_function(outputs, labels) + loss_function(x1_linear,labels) + loss_function(x2_linear,labels) + loss_function(x3_linear,labels) 
+
             loss_each_step.backward()
             optimizer.step()
 
@@ -207,7 +209,7 @@ if train:
         with torch.no_grad():
             loop_val = tqdm(enumerate(val_loader), total=len(val_loader))
             for _, (val_image1, val_image2, val_image3, val_labels) in loop_val:
-                outputs = model(val_image1.to(device), val_image2.to(device), val_image3.to(device))
+                _,_,_,outputs = model(val_image1.to(device), val_image2.to(device), val_image3.to(device))
                 predict = torch.max(outputs, dim=1)[1]
                 acc += (predict == val_labels.to(device)).sum().item()
                 loop_val.set_description(f'Val Epoch [{epoch+1}/{epochs}]')
@@ -254,7 +256,7 @@ if test:
             picture.append(os.path.basename(path))
         batch_num = 1
         for _, (test_image1, test_image2, test_image3, test_labels) in loop_test:
-            outputs = model(test_image1.to(device),
+            _,_,_,outputs = model(test_image1.to(device),
                             test_image2.to(device),test_image3.to(device))  # 指认设备
             predict_y = torch.max(outputs, dim=1)[1]
 
