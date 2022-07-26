@@ -29,7 +29,7 @@ from Backbone.ConfusionMatrix import ConfusionMatrix
 # ------------------------------------------
 # 参数调整我叫牛光
 # ------------------------------------------
-batch_size = 1
+batch_size = 8
 epochs = 100
 lr = 0.0001
 num_classes = 41
@@ -199,6 +199,7 @@ if train:
             optimizer.step()
 
             loss += loss_each_step.item()
+            loss /= len(train_loader)
             loop_train.set_description(f'Train Epoch [{epoch+1}/{epochs}]')
             loop_train.set_postfix(loss=loss)
         # 写入loss,loss值，每一个epoch记录一次

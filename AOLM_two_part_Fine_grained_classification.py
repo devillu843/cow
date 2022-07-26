@@ -29,7 +29,7 @@ from loss.soft_Dice_Loss import SoftDiceLoss
 # ------------------------------------------
 # 参数调整
 # ------------------------------------------
-batch_size = 32
+batch_size = 8
 epochs = 100
 lr = 0.0001
 num_classes = 41
@@ -43,7 +43,7 @@ train = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
-model = ALOM_resnet50_two_alone(num_classes=num_classes,include_top=False).to(device)
+model = ALOM_resnet50_two_alone(num_classes=num_classes).to(device)
 loss_function = nn.CrossEntropyLoss()
 # loss_function = SoftDiceLoss() # 学不到内容
 optimizer = torch.optim.Adam(model.parameters(), lr)
@@ -185,12 +185,14 @@ if train:
         loop_train = tqdm(enumerate(train_loader), total=len(train_loader))
         for _, (image1, image2, labels) in loop_train:
             optimizer.zero_grad()
-            outputs = model(image1.to(device), image2.to(device))
-            loss_each_step = loss_function(outputs, labels.to(device))
+            x1_linear, x2_linear, outputs = model(image1.to(device), image2.to(device))
+            labels = labels.to(device)
+            loss_each_step = loss_function(outputs, labels) + loss_function(x1_linear, labels) + loss_function(x2_linear, labels)
             loss_each_step.backward()
             optimizer.step()
 
             loss += loss_each_step.item()
+            loss /= len(train_loader)
             loop_train.set_description(f'Train Epoch [{epoch+1}/{epochs}]')
             loop_train.set_postfix(loss=loss)
         # 写入loss,loss值，每一个epoch记录一次

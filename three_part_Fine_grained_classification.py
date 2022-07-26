@@ -16,6 +16,7 @@ from torchsummary import summary
 from myutils.read_split_data import read_split_data
 from myutils.Mydataset import MyDataset3
 from myutils.write_into_file import pd_toExcel
+from myutils.Mytransform import Gaussian, bright_contrast_color_sharpness, pepper_salt
 
 
 from Backbone.AlexNet import *
@@ -25,7 +26,7 @@ from Backbone.ConfusionMatrix import ConfusionMatrix
 # from loss.soft_Dice_Loss import SoftDiceLoss
 
 # ------------------------------------------
-# 参数调整
+# 参数调整我叫牛光
 # ------------------------------------------
 batch_size = 8
 epochs = 40
@@ -41,7 +42,7 @@ train = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
-model = resnet50_three(num_classes=num_classes).to(device)
+model = AlexNet_three_part(num_classes=num_classes).to(device)
 loss_function = nn.CrossEntropyLoss()
 # loss_function = SoftDiceLoss() # 学不到内容
 optimizer = torch.optim.Adam(model.parameters(), lr)
@@ -55,15 +56,15 @@ image_path2 = './dataset/test-41-different/head'
 image_path3 = './dataset/test-41-different/all'
 # 数据结果存储路径
 write_home = './logs/test-41-different/torso_head_all_fine_grained'
-write_name = '/resnet50_three_part/'
+write_name = '/Alexnet_three_part/'
 write_path = write_home + write_name
 # 权重文件存储路径
 save_home = './weights/test-41-different/torso_head_all_fine_grained'
-save_name = '/resnet50_three_part.pt'
+save_name = '/Alexnet_three_part.pt'
 save_path = save_home + save_name
 # 分类文件
 json_class = 'class-test-41.json'
-excel_name = 'Alexnet41different-torso-head-all.xlsx'
+excel_name = './excel/Alexnet-41different-torso-head-all.xlsx'
 
 torch.manual_seed(100)
 torch.cuda.manual_seed(100)
@@ -112,10 +113,13 @@ writer = SummaryWriter(log_dir=write_path+nowt)
 data_transform = {
     'train': transforms.Compose([transforms.Resize((224, 224)),
                                 transforms.RandomHorizontalFlip(),  # 以给定的概率随机水平翻转
-                                # transforms.RandomCrop,
-                                 transforms.ToTensor(),
-                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
-                                     0.229, 0.224, 0.225])
+                                Gaussian(0.5,0.1,0.2),
+                                bright_contrast_color_sharpness(p=0.5,bright=0.5),
+                                pepper_salt(p=0.5,percentage=0.15),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
+                                                     0.229, 0.224, 0.225]),
+                                transforms.RandomErasing(0.3,(0.2,1),(0.2,3.3),value=0),
                                  ]),
     'val': transforms.Compose([transforms.Resize((224, 224)),
                               transforms.ToTensor(),
@@ -176,7 +180,7 @@ test_loader = torch.utils.data.DataLoader(test_data_set,
                                           collate_fn=train_data_set.collate_fn)
 
 # # 模型大小
-summary(model, input_size=[(3, 224, 224), (3, 224, 224),(3,224,224)])
+summary(model, input_size=[(3, 224, 224), (3, 224, 224),(3, 224, 224)])
 if train:
     # print(save_path)
     best_acc = 0.0

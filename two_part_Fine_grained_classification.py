@@ -10,29 +10,30 @@ from tqdm import tqdm
 import json
 import os
 import time
-# from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report
 from sklearn import metrics
 from torchsummary import summary
 from myutils.read_split_data import read_split_data
 from myutils.Mydataset import MyDataset2
 from myutils.write_into_file import pd_toExcel
+from myutils.Mytransform import Gaussian, pepper_salt, bright_contrast_color_sharpness
 
 
 from Backbone.AlexNet import *
 from Backbone.ResNet import *
 from Backbone.ConfusionMatrix import ConfusionMatrix
-# from loss.Focal_Loss import FocalLoss2d, focal_loss
-# from loss.soft_Dice_Loss import SoftDiceLoss
+from loss.Focal_Loss import FocalLoss2d, focal_loss
+from loss.soft_Dice_Loss import SoftDiceLoss
 
 # ------------------------------------------
 # 参数调整
 # ------------------------------------------
 batch_size = 8
-epochs = 40
+epochs = 80
 lr = 0.0001
 num_classes = 41
 test = True
-train = False
+train = True
 
 
 # ------------------------------------------
@@ -41,7 +42,7 @@ train = False
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
-model = AlexNet_two_part(num_classes=num_classes, reduce_channel=True).to(device)
+model = resnet50_two_alone(num_classes=num_classes).to(device)
 loss_function = nn.CrossEntropyLoss()
 # loss_function = SoftDiceLoss() # 学不到内容
 optimizer = torch.optim.Adam(model.parameters(), lr)
@@ -50,19 +51,19 @@ optimizer = torch.optim.Adam(model.parameters(), lr)
 # ------------------------------------------
 # 存储调整
 # ------------------------------------------
-image_path1 = './dataset/test-41-different/torso'
-image_path2 = './dataset/test-41-different/head'
+image_path1 = './dataset/test-41-different/all'
+image_path2 = './dataset/test-41-different/torso'
 # 数据结果存储路径
-write_home = './logs/test-41-different/torso_head_fine_grained'
-write_name = '/Alexnet_two_part/'
+write_home = './logs/test-41-different/all_torso_fine_grained'
+write_name = '/resnet50_two_part/'
 write_path = write_home + write_name
 # 权重文件存储路径
-save_home = './weights/test-41-different/torso_head_fine_grained'
-save_name = '/Alexnet_two_part.pth'
+save_home = './weights/test-41-different/all_torso_fine_grained'
+save_name = '/resnet50_two_part.pt'
 save_path = save_home + save_name
 # 分类文件
 json_class = 'class-test-41.json'
-excel_name = '41different-torso-head.xlsx'
+excel_name = './excel/resnet50-41different-all-torso.xlsx'
 
 torch.manual_seed(100)
 torch.cuda.manual_seed(100)
@@ -111,10 +112,13 @@ writer = SummaryWriter(log_dir=write_path+nowt)
 data_transform = {
     'train': transforms.Compose([transforms.Resize((224, 224)),
                                 transforms.RandomHorizontalFlip(),  # 以给定的概率随机水平翻转
-                                # transforms.RandomCrop,
-                                 transforms.ToTensor(),
-                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
-                                     0.229, 0.224, 0.225])
+                                Gaussian(0.5,0.1,0.2),
+                                bright_contrast_color_sharpness(p=0.5,bright=0.5),
+                                pepper_salt(p=0.5,percentage=0.15),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
+                                                     0.229, 0.224, 0.225]),
+                                transforms.RandomErasing(0.3,(0.2,1),(0.2,3.3),value=0),
                                  ]),
     'val': transforms.Compose([transforms.Resize((224, 224)),
                               transforms.ToTensor(),
